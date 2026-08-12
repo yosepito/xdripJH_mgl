@@ -25,6 +25,8 @@ import com.eveningoutpost.dexdrip.services.ActivityRecognizedService;
 import com.eveningoutpost.dexdrip.utils.CipherUtils;
 import com.eveningoutpost.dexdrip.utils.DexCollectionType;
 import com.eveningoutpost.dexdrip.utils.Mdns;
+import com.eveningoutpost.dexdrip.utils.framework.GzipDecider;
+import com.eveningoutpost.dexdrip.utils.framework.GzipRequestInterceptor;
 import com.eveningoutpost.dexdrip.xdrip;
 import com.google.common.base.Charsets;
 import com.google.common.hash.Hashing;
@@ -66,9 +68,6 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.ResponseBody;
 import okhttp3.TlsVersion;
-import okio.BufferedSink;
-import okio.GzipSink;
-import okio.Okio;
 import retrofit2.Call;
 import retrofit2.Response;
 import retrofit2.Retrofit;
@@ -183,7 +182,7 @@ public class NightscoutUploader {
         if (UserError.ExtraLogTags.shouldLogTag(TAG, android.util.Log.VERBOSE)) {
             okHttp3Builder.addInterceptor(new SSLHandshakeInterceptor());
         }
-        if (USE_GZIP) okHttp3Builder.addInterceptor(new GzipRequestInterceptor());
+        if (USE_GZIP) okHttp3Builder.addInterceptor(new GzipRequestInterceptor(NS_GZIP_DECIDER));
         client = okHttp3Builder.build();
         enableRESTUpload = prefs.getBoolean("cloud_storage_api_enable", false);
         enableMongoUpload = prefs.getBoolean("cloud_storage_mongodb_enable", false);
@@ -575,7 +574,7 @@ public class NightscoutUploader {
         }
 
         if (array.length() > 0) {//KS
-            final RequestBody body = RequestBody.create(MediaType.parse("application/json"), array.toString());
+            final RequestBody body = RequestBody.create(array.toString(), MediaType.parse("application/json"));
             final Response<ResponseBody> r = nightscoutService.upload(secret, body).execute();
             if (!r.isSuccessful()) throw new UploaderException(r.message(), r.code());
             checkGzipSupport(r);
@@ -705,7 +704,7 @@ public class NightscoutUploader {
         json.put("dateString", format.format(record.timestamp));
         json.put("sgv", (int) record.calculated_value);
         json.put("direction", record.slopeName());
-        return RequestBody.create(MediaType.parse("application/json"), json.toString());
+        return RequestBody.create(json.toString(), MediaType.parse("application/json"));
     }
 
     private void populateV1APIMeterReadingEntry(JSONArray array, Calibration record) throws Exception {
@@ -858,7 +857,7 @@ public class NightscoutUploader {
             }
             // handle insert types
             if (insert_array.length() != 0) {
-                final RequestBody body = RequestBody.create(MediaType.parse("application/json"), insert_array.toString());
+                final RequestBody body = RequestBody.create(insert_array.toString(), MediaType.parse("application/json"));
                 final Response<ResponseBody> r;
                 if (apiSecret != null) {
                     r = nightscoutService.uploadTreatments(apiSecret, body).execute();
@@ -883,7 +882,7 @@ public class NightscoutUploader {
                     JSONObject item = (JSONObject) upsert_array.get(i);
                     final String match_uuid = item.getString("uuid");
                     item.put("_id", uuid_to_id(match_uuid));
-                    final RequestBody body = RequestBody.create(MediaType.parse("application/json"), item.toString());
+                    final RequestBody body = RequestBody.create(item.toString(), MediaType.parse("application/json"));
                     final Response<ResponseBody> r;
                     if (apiSecret != null) {
                         r = nightscoutService.upsertTreatments(apiSecret, body).execute();
@@ -947,7 +946,7 @@ public class NightscoutUploader {
                 }
                 // send to nightscout - update counter
 
-                final RequestBody body = RequestBody.create(MediaType.parse("application/json"), data.toString());
+                final RequestBody body = RequestBody.create(data.toString(), MediaType.parse("application/json"));
                 Response<ResponseBody> r;
 
                 r = nightscoutService.uploadActivity(apiSecret, body).execute();
@@ -995,7 +994,7 @@ public class NightscoutUploader {
                 }
                 // send to nightscout - update counter
 
-                final RequestBody body = RequestBody.create(MediaType.parse("application/json"), data.toString());
+                final RequestBody body = RequestBody.create(data.toString(), MediaType.parse("application/json"));
                 Response<ResponseBody> r;
 
                 r = nightscoutService.uploadActivity(apiSecret, body).execute();
@@ -1046,7 +1045,7 @@ public class NightscoutUploader {
                 }
                 // send to nightscout - update counter
 
-                final RequestBody body = RequestBody.create(MediaType.parse("application/json"), data.toString());
+                final RequestBody body = RequestBody.create(data.toString(), MediaType.parse("application/json"));
                 Response<ResponseBody> r;
 
                 r = nightscoutService.uploadActivity(apiSecret, body).execute();
@@ -1170,7 +1169,7 @@ public class NightscoutUploader {
                 //}
                 //}
 
-                final RequestBody body = RequestBody.create(MediaType.parse("application/json"), json.toString());
+                final RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json"));
                 Response<ResponseBody> r;
                 if (apiSecret != null) {
                     r = nightscoutService.uploadDeviceStatus(apiSecret, body).execute();
@@ -1407,6 +1406,9 @@ public class NightscoutUploader {
         }
     }
 
+    static final GzipDecider NS_GZIP_DECIDER =
+            request -> supportsGzip(request.url().uri().getHost() + request.url().uri().getPort());
+
     /**
      * Prints TLS Version and Cipher Suite for SSL Calls through OkHttp3
      */
@@ -1428,45 +1430,6 @@ public class NightscoutUploader {
                     Log.v(TAG, "TLS: " + tlsVersion + ", CipherSuite: " + cipherSuite);
                 }
             }
-        }
-    }
-
-    static class GzipRequestInterceptor implements Interceptor {
-        @Override
-        public okhttp3.Response intercept(Chain chain) throws IOException {
-            final Request originalRequest = chain.request();
-            if (originalRequest.body() == null
-                    || originalRequest.header("Content-Encoding") != null
-                    || !supportsGzip(originalRequest.url().uri().getHost() + originalRequest.url().uri().getPort())) {
-                return chain.proceed(originalRequest);
-            }
-
-            final Request compressedRequest = originalRequest.newBuilder()
-                    .header("Content-Encoding", "gzip")
-                    .method(originalRequest.method(), gzip(originalRequest.body()))
-                    .build();
-            return chain.proceed(compressedRequest);
-        }
-
-        private RequestBody gzip(final RequestBody body) {
-            return new RequestBody() {
-                @Override
-                public MediaType contentType() {
-                    return body.contentType();
-                }
-
-                @Override
-                public long contentLength() {
-                    return -1; // We don't know the compressed length in advance!
-                }
-
-                @Override
-                public void writeTo(BufferedSink sink) throws IOException {
-                    BufferedSink gzipSink = Okio.buffer(new GzipSink(sink));
-                    body.writeTo(gzipSink);
-                    gzipSink.close();
-                }
-            };
         }
     }
 
