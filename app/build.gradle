@@ -78,20 +78,7 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 android {
-    signingConfigs {
-        debug {
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-        }
-        release {
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-        }
-    }
+    
     compileSdk 34 // TODO centralize
 
 
@@ -214,7 +201,7 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'),
                     'proguard-rules.pro'
-            signingConfig signingConfigs.release
+           
         }
         debug {
             minifyEnabled true
@@ -227,7 +214,7 @@ android {
             //      applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
             debuggable true
-            signingConfig signingConfigs.debug
+            
         }
         dev {
             minifyEnabled false
