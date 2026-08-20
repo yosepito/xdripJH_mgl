@@ -266,7 +266,7 @@ public class BestGlucose {
         }
 
         dg.mgdl = estimate;
-        dg.delta_mgdl = estimated_delta;
+        dg.delta_mgdl = dg.slope * 5d * 60d * 1000d;//miguel: change to broadcast the right normalized 5min delta
         dg.warning = warning_level;
         dg.unitized = stringEstimate;
         dg.delta_arrow = slope_arrow;

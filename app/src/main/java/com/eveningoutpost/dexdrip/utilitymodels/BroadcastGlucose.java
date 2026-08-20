@@ -110,7 +110,7 @@ public class BroadcastGlucose {
 
                     if (dg.noise <= noiseBlockLevel) {
                         bundle.putDouble(Intents.EXTRA_BG_ESTIMATE, dg.mgdl);
-                        bundle.putDouble(Intents.EXTRA_BG_SLOPE, dg.slope);
+                        bundle.putDouble(Intents.EXTRA_BG_SLOPE, dg.delta_mgdl);
 
                         // hide slope possibly needs to be handled properly
                         if (bgReading.hide_slope) {
@@ -141,7 +141,7 @@ public class BroadcastGlucose {
 
                         //TODO: change back to bgReading.calculated_value_slope if it will also get calculated for Share data
                         // bundle.putDouble(Intents.EXTRA_BG_SLOPE, bgReading.calculated_value_slope);
-                        bundle.putDouble(Intents.EXTRA_BG_SLOPE, BgReading.currentSlope());
+                        bundle.putDouble(Intents.EXTRA_BG_SLOPE, BgReading.currentSlope() * 5d * 60d * 1000d);
                         if (bgReading.hide_slope) {
                             bundle.putString(Intents.EXTRA_BG_SLOPE_NAME, "9"); // not sure if this is right but has been this way for a long time
                         } else {
